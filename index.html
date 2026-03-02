@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MathJax Test Lab</title>
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            }
+        };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        body { font-family: sans-serif; padding: 20px; display: flex; gap: 20px; }
+        #input { width: 50%; height: 80vh; padding: 10px; font-family: monospace; }
+        #output { width: 50%; height: 80vh; padding: 10px; border: 1px solid #ccc; overflow: auto; }
+    </style>
+</head>
+<body>
+
+    <textarea id="input" placeholder="Type LaTeX here (e.g., $E=mc^2$)"></textarea>
+    <div id="output">Rendered math will appear here...</div>
+
+    <script>
+        const input = document.getElementById('input');
+        const output = document.getElementById('output');
+
+        input.addEventListener('input', () => {
+            // Update the text in the output div
+            output.innerHTML = input.value;
+            // Tell MathJax to typeset the new content
+            MathJax.typesetPromise([output]);
+        });
+    </script>
+
+</body>
+</html>

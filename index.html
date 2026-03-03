@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MathJax Test Lab</title>
+    <title>MathJax Hybrid Lab</title>
     <script>
         window.MathJax = {
             tex: {
@@ -11,30 +11,168 @@
         };
     </script>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-    
     <style>
-        body { font-family: sans-serif; padding: 20px; display: flex; gap: 20px; }
-        #input { width: 50%; height: 80vh; padding: 10px; font-family: monospace; }
-        #output { width: 50%; height: 80vh; padding: 10px; border: 1px solid #ccc; overflow: auto; white-space: pre-wrap; 
-            word-wrap: break-word;}
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f0f2f5; color: #333; }
+        .master-nav { text-align: center; margin-bottom: 30px; padding: 10px; background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .nav-btn { padding: 10px 20px; margin: 0 10px; cursor: pointer; border: 2px solid gray; background: white; color: black; border-radius: 20px; font-weight: bold; }
+        .nav-btn.active { background: black; color: white; }
+        
+        .wrapper { max-width: 1200px; margin: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        
+        /* Notice Box Style */
+.notice { 
+    background: #D3D3D3; 
+    border-left: 5px solid black; 
+    padding: 12px; 
+    margin-bottom: 15px; 
+    font-size: 0.9em; 
+    line-height: 1.4; 
+    border-radius: 4px; 
+}
+.notice strong { color: black; }
+
+        /* Proof Builder Styles */
+        table { width: 100%; border-collapse: collapse; }
+        input, textarea { width: 90%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 5px; font-family: 'Courier New', monospace; }
+        textarea { height: 70vh; resize: none; }
+        
+        .btn-group { margin-top: 15px; display: flex; gap: 10px; }
+        button { padding: 10px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; }
+        .btn-blue { background: black; color: white; }
+        .btn-green { background: black; color: white; }
+
+        #render-box, #code-box, #legacy-output { 
+            margin-top: 20px; padding: 20px; border: 2px dashed #e0e0e0; border-radius: 8px; min-height: 150px; background: #fafafa;
+        }
+        #code-box { font-family: 'Courier New', monospace; white-space: pre-wrap; display: none; color: #d81b60; }
+        
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
-    <textarea id="input" placeholder="Type LaTeX here (e.g., $E=mc^2$)"></textarea>
-    <div id="output">Rendered math will appear here...</div>
+<div class="master-nav">
+    <strong>Options:</strong>
+    <button id="btn-proof" class="nav-btn active" onclick="switchMode('proof')">Aligned MathJax Code</button>
+    <button id="btn-free" class="nav-btn" onclick="switchMode('free')">Check MathJax Code</button>
+</div>
 
-    <script>
-        const input = document.getElementById('input');
-        const output = document.getElementById('output');
+<div class="wrapper">
+    <div class="card">
+        <div id="input-proof">
+            <h2>1. Input math:</h2>
+            <div class="notice">
+    <strong>Note:</strong> Do <u>not</u> include <code>\( \)</code> or <code>$ $</code> in the math boxes. This tool adds them automatically to the final output.
+</div>
+            <table id="proof-table">
+                <thead><tr><th>Math</th><th>Reason</th></tr></thead>
+                <tbody id="table-body">
+                    <tr>
+                        <td><input type="text" class="math-in" placeholder="2x+5=15" oninput="process()"></td>
+                        <td><input type="text" class="text-in" placeholder="given" oninput="process()"></td>
+                    </tr>
+                </tbody>
+            </table>
+            <button class="btn-green" style="margin-top:10px" onclick="addRow()">+ Add Row</button>
+        </div>
 
-        input.addEventListener('input', () => {
-            // Update the text in the output div
-            output.innerHTML = input.value;
-            // Tell MathJax to typeset the new content
-            MathJax.typesetPromise([output]);
+        <div id="input-free" class="hidden">
+            <h2>1. Freeform Editor</h2>
+            <textarea id="legacy-input" placeholder="Type anything here... $E=mc^2$" oninput="processLegacy()"></textarea>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>2. Preview</h2>
+        <div id="output-proof-controls">
+            <button class="btn-blue" onclick="copyToClipboard()">Copy LaTeX Code</button>
+            <button id="toggle-view-btn" style="background:#eee" onclick="toggleView()">Show Raw Code</button>
+        </div>
+        
+        <div id="proof-display-container">
+            <div id="render-box">\( \text{Waiting for input...} \)</div>
+            <pre id="code-box"></pre>
+        </div>
+
+        <div id="legacy-display-container" class="hidden">
+            <div id="legacy-output" style="white-space: pre-wrap;">Rendered math will appear here...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let isCodeView = false;
+
+    function switchMode(mode) {
+        const isProof = mode === 'proof';
+        // Toggle Buttons
+        document.getElementById('btn-proof').classList.toggle('active', isProof);
+        document.getElementById('btn-free').classList.toggle('active', !isProof);
+        
+        // Toggle Input Cards
+        document.getElementById('input-proof').classList.toggle('hidden', !isProof);
+        document.getElementById('input-free').classList.toggle('hidden', isProof);
+        
+        // Toggle Output Elements
+        document.getElementById('output-proof-controls').classList.toggle('hidden', !isProof);
+        document.getElementById('proof-display-container').classList.toggle('hidden', !isProof);
+        document.getElementById('legacy-display-container').classList.toggle('hidden', isProof);
+    }
+
+    // --- PROOF BUILDER LOGIC ---
+    function addRow() {
+        const row = document.createElement('tr');
+        row.innerHTML = `<td><input type="text" class="math-in" oninput="process()"></td>
+                         <td><input type="text" class="text-in" oninput="process()"></td>`;
+        document.getElementById('table-body').appendChild(row);
+    }
+
+    function process() {
+        const mathInputs = document.querySelectorAll('.math-in');
+        const textInputs = document.querySelectorAll('.text-in');
+        let lines = [];
+
+        mathInputs.forEach((m, i) => {
+            let mathVal = m.value.trim();
+            let textVal = textInputs[i].value.trim();
+            if (mathVal || textVal) {
+                if (mathVal.includes('=') && !mathVal.includes('&')) mathVal = mathVal.replace('=', '&=');
+                let line = mathVal;
+                if (textVal) line += ` &&\\text{${textVal}}`;
+                lines.push(line);
+            }
         });
-    </script>
+
+        // JOINING WITH 8 BACKSLASHES FOR 4 IN OUTPUT
+        const finalCode = `\\(\\begin{aligned}\n${lines.join(' \\\\\\\\ \n')}\n\\end{aligned}\\)`;
+        
+        document.getElementById('code-box').textContent = finalCode;
+        const renderBox = document.getElementById('render-box');
+        renderBox.innerHTML = finalCode;
+        MathJax.typesetPromise([renderBox]);
+    }
+
+    function toggleView() {
+        isCodeView = !isCodeView;
+        document.getElementById('render-box').style.display = isCodeView ? 'none' : 'block';
+        document.getElementById('code-box').style.display = isCodeView ? 'block' : 'none';
+        document.getElementById('toggle-view-btn').innerText = isCodeView ? 'Show Render' : 'Show Raw Code';
+    }
+
+    function copyToClipboard() {
+        navigator.clipboard.writeText(document.getElementById('code-box').textContent);
+        alert("LaTeX copied!");
+    }
+
+    // --- LEGACY LOGIC ---
+    function processLegacy() {
+        const input = document.getElementById('legacy-input');
+        const output = document.getElementById('legacy-output');
+        output.textContent = input.value;
+        MathJax.typesetPromise([output]);
+    }
+</script>
 
 </body>
 </html>

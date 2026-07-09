@@ -1,6 +1,8 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MathJax Hybrid Lab</title>
     <script>
         window.MathJax = {
@@ -21,32 +23,45 @@
         .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         
         /* Notice Box Style */
-.notice { 
-    background: #D3D3D3; 
-    border-left: 5px solid black; 
-    padding: 12px; 
-    margin-bottom: 15px; 
-    font-size: 0.9em; 
-    line-height: 1.4; 
-    border-radius: 4px; 
-}
-.notice strong { color: black; }
+        .notice { 
+            background: #D3D3D3; 
+            border-left: 5px solid black; 
+            padding: 12px; 
+            margin-bottom: 15px; 
+            font-size: 0.9em; 
+            line-height: 1.4; 
+            border-radius: 4px; 
+        }
+        .notice strong { color: black; }
 
-        /* Proof Builder Styles */
+        /* General Inputs */
         table { width: 100%; border-collapse: collapse; }
-        input, textarea { width: 90%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 5px; font-family: 'Courier New', monospace; }
-        textarea { height: 70vh; resize: none; }
+        input, textarea { width: 90%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 5px; font-family: 'Courier New', monospace; box-sizing: border-box; }
+        
+        /* Specific Textarea Heights */
+        #legacy-input { height: 70vh; resize: none; width: 100%; }
+        #cb-input { height: 180px; resize: vertical; width: 100%; margin-bottom: 15px; }
         
         .btn-group { margin-top: 15px; display: flex; gap: 10px; }
         button { padding: 10px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; }
         .btn-blue { background: black; color: white; }
         .btn-green { background: black; color: white; }
+        .btn-light { background: #eee; color: black; border: 1px solid #ccc; }
 
+        /* Output Boxes */
         #render-box, #code-box, #legacy-output { 
             margin-top: 20px; padding: 20px; border: 2px dashed #e0e0e0; border-radius: 8px; min-height: 150px; background: #fafafa;
         }
         #code-box { font-family: 'Courier New', monospace; white-space: pre-wrap; display: none; color: #d81b60; }
         
+        .cb-output-box {
+            margin-top: 20px; padding: 20px; border: 2px dashed #e0e0e0; border-radius: 8px; min-height: 100px; 
+            background: #212529; color: #f8f9fa; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-all;
+        }
+
+        .features-list { padding-left: 20px; font-size: 0.9em; line-height: 1.5; color: #555; }
+        .features-list li { margin-bottom: 8px; }
+
         .hidden { display: none !important; }
     </style>
 </head>
@@ -56,17 +71,19 @@
     <strong>Options:</strong>
     <button id="btn-proof" class="nav-btn active" onclick="switchMode('proof')">Aligned MathJax Code</button>
     <button id="btn-free" class="nav-btn" onclick="switchMode('free')">Check MathJax Code</button>
+    <button id="btn-cb" class="nav-btn" onclick="switchMode('cb')">CB Output</button>
 </div>
 
 <div class="wrapper">
     <div class="card">
+        
         <div id="input-proof">
             <h2>1. Input math:</h2>
             <div class="notice">
-    <strong>Note:</strong> Do <u>not</u> include <code>\( \)</code> or <code>$ $</code> in the math boxes. This tool adds them automatically to the final output.
-</div>
+                <strong>Note:</strong> Do <u>not</u> include <code>\( \)</code> or <code>$ $</code> in the math boxes. This tool adds them automatically to the final output.
+            </div>
             <table id="proof-table">
-                <thead><tr><th>Math</th><th>Reason</th></tr></thead>
+                <thead><tr><th style="text-align: left;">Math</th><th style="text-align: left;">Reason</th></tr></thead>
                 <tbody id="table-body">
                     <tr>
                         <td><input type="text" class="math-in" placeholder="2x+5=15" oninput="process()"></td>
@@ -81,13 +98,45 @@
             <h2>1. Freeform Editor</h2>
             <textarea id="legacy-input" placeholder="Type anything here... $E=mc^2$" oninput="processLegacy()"></textarea>
         </div>
+
+        <div id="input-cb" class="hidden">
+            <h2>1. CB-Ready MathJax Generator</h2>
+            <div class="notice">
+                <strong>Tip:</strong> To add an explanation, separate it from the equation using a vertical bar <code>|</code> or multiple spaces (e.g., <code>y = 2x + 3 | Given equation</code>).
+            </div>
+            <label style="font-weight: bold; display: block; margin-bottom: 8px;">Enter Raw Equations (one per line):</label>
+            <textarea id="cb-input" placeholder="y = 2x + 3&#10;y - 3 = 2x&#10;x = (y - 3) / 2"></textarea>
+            
+            <div class="btn-group" style="justify-content: flex-end; margin-bottom: 20px;">
+                <button class="btn-light" id="clearBtn">Clear</button>
+                <button class="btn-blue" id="convertBtn">Format MathJax</button>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid #eee; margin-bottom: 15px;">
+            
+            <h3 style="font-size: 1.1em; margin-bottom: 10px;">What This Formatter Does:</h3>
+            <ul class="features-list">
+                <li>Wraps output in CB-friendly <code>\( \)</code> inline-block delimiters.</li>
+                <li>Utilizes the MathJax <code>\begin{aligned} ... \end{aligned}</code> environment.</li>
+                <li>Forces strict column-alignment by converting <code>=</code> to <code>&=</code>.</li>
+                <li>Injects <code>\\[10pt]</code> vertical breaks for clean reading.</li>
+                <li>Detects text explanations, formatting them left-aligned using <code>&\quad \text{...}</code>.</li>
+                <li>Compresses final code into a <strong>strict single line</strong>.</li>
+            </ul>
+        </div>
+
     </div>
 
     <div class="card">
         <h2>2. Preview</h2>
+        
         <div id="output-proof-controls">
             <button class="btn-blue" onclick="copyToClipboard()">Copy LaTeX Code</button>
-            <button id="toggle-view-btn" style="background:#eee" onclick="toggleView()">Show Raw Code</button>
+            <button id="toggle-view-btn" style="background:#eee; color: black; border: 1px solid #ccc;" onclick="toggleView()">Show Raw Code</button>
+        </div>
+        
+        <div id="output-cb-controls" class="hidden">
+            <button class="btn-blue" id="cbCopyBtn">Copy CB Code</button>
         </div>
         
         <div id="proof-display-container">
@@ -98,29 +147,41 @@
         <div id="legacy-display-container" class="hidden">
             <div id="legacy-output" style="white-space: pre-wrap;">Rendered math will appear here...</div>
         </div>
+
+        <div id="cb-display-container" class="hidden">
+            <div id="cb-mathjax-output" class="cb-output-box">Generated code will appear here...</div>
+        </div>
     </div>
 </div>
 
 <script>
     let isCodeView = false;
 
+    // --- MASTER NAVIGATION LOGIC ---
     function switchMode(mode) {
         const isProof = mode === 'proof';
-        // Toggle Buttons
+        const isFree = mode === 'free';
+        const isCb = mode === 'cb';
+
         document.getElementById('btn-proof').classList.toggle('active', isProof);
-        document.getElementById('btn-free').classList.toggle('active', !isProof);
+        document.getElementById('btn-free').classList.toggle('active', isFree);
+        document.getElementById('btn-cb').classList.toggle('active', isCb);
         
-        // Toggle Input Cards
         document.getElementById('input-proof').classList.toggle('hidden', !isProof);
-        document.getElementById('input-free').classList.toggle('hidden', isProof);
+        document.getElementById('input-free').classList.toggle('hidden', !isFree);
+        document.getElementById('input-cb').classList.toggle('hidden', !isCb);
         
-        // Toggle Output Elements
         document.getElementById('output-proof-controls').classList.toggle('hidden', !isProof);
-        document.getElementById('proof-display-container').classList.toggle('hidden', !isProof);
-        document.getElementById('legacy-display-container').classList.toggle('hidden', isProof);
+        document.getElementById('proof-display-container').classList.toggle('hidden', !isProof || isCodeView);
+        document.getElementById('code-box').classList.toggle('hidden', !isProof || !isCodeView);
+        
+        document.getElementById('legacy-display-container').classList.toggle('hidden', !isFree);
+        
+        document.getElementById('output-cb-controls').classList.toggle('hidden', !isCb);
+        document.getElementById('cb-display-container').classList.toggle('hidden', !isCb);
     }
 
-    // --- PROOF BUILDER LOGIC ---
+    // --- MODE 1: PROOF BUILDER LOGIC ---
     function addRow() {
         const row = document.createElement('tr');
         row.innerHTML = `<td><input type="text" class="math-in" oninput="process()"></td>
@@ -144,7 +205,6 @@
             }
         });
 
-        // JOINING WITH 8 BACKSLASHES FOR 4 IN OUTPUT
         const finalCode = `\\(\\begin{aligned}\n${lines.join(' \\\\\\\\ \n')}\n\\end{aligned}\\)`;
         
         document.getElementById('code-box').textContent = finalCode;
@@ -155,8 +215,8 @@
 
     function toggleView() {
         isCodeView = !isCodeView;
-        document.getElementById('render-box').style.display = isCodeView ? 'none' : 'block';
-        document.getElementById('code-box').style.display = isCodeView ? 'block' : 'none';
+        document.getElementById('render-box').classList.toggle('hidden', isCodeView);
+        document.getElementById('code-box').classList.toggle('hidden', !isCodeView);
         document.getElementById('toggle-view-btn').innerText = isCodeView ? 'Show Render' : 'Show Raw Code';
     }
 
@@ -165,13 +225,258 @@
         alert("LaTeX copied!");
     }
 
-    // --- LEGACY LOGIC ---
+    // --- MODE 2: LEGACY LOGIC ---
     function processLegacy() {
         const input = document.getElementById('legacy-input');
         const output = document.getElementById('legacy-output');
         output.textContent = input.value;
         MathJax.typesetPromise([output]);
     }
+
+    // --- MODE 3: CB OUTPUT LOGIC ---
+    function autoFormatFractions(str) {
+        function stripOuterParens(s) {
+            s = s.trim();
+            if (s.startsWith('(') && s.endsWith(')')) {
+                let parens = 0;
+                for (let i = 0; i < s.length - 1; i++) {
+                    if (s[i] === '(') parens++;
+                    else if (s[i] === ')') parens--;
+                    if (parens === 0) return s; 
+                }
+                return s.slice(1, -1);
+            }
+            return s;
+        }
+
+        let i = str.indexOf('/');
+        let safetyCounter = 0;
+        
+        while (i !== -1 && safetyCounter < 50) {
+            safetyCounter++;
+            let start = i - 1;
+            while (start >= 0 && str[start] === ' ') start--; 
+
+            let numStart = start;
+            if (str[start] === ')') {
+                let parens = 0;
+                while (numStart >= 0) {
+                    if (str[numStart] === ')') parens++;
+                    if (str[numStart] === '(') parens--;
+                    if (parens === 0) break;
+                    numStart--;
+                }
+                while (numStart - 1 >= 0 && /[a-zA-Z0-9\\\_]/.test(str[numStart - 1])) {
+                    numStart--;
+                }
+            } else {
+                while (numStart >= 0 && /[a-zA-Z0-9\.\^\_\\\{\}]/.test(str[numStart])) {
+                    numStart--;
+                }
+                numStart++; 
+            }
+
+            let end = i + 1;
+            while (end < str.length && str[end] === ' ') end++; 
+
+            let denEnd = end;
+            if (str[end] === '(') {
+                let parens = 0;
+                while (denEnd < str.length) {
+                    if (str[denEnd] === '(') parens++;
+                    if (str[denEnd] === ')') parens--;
+                    if (parens === 0) break;
+                    denEnd++;
+                }
+            } else {
+                while (denEnd < str.length && /[a-zA-Z0-9\.\^\_\\\{\}]/.test(str[denEnd])) {
+                    denEnd++;
+                }
+                denEnd--; 
+            }
+
+            if (numStart >= 0 && denEnd < str.length && numStart <= start && denEnd >= end) {
+                let numerator = stripOuterParens(str.substring(numStart, i));
+                let denominator = stripOuterParens(str.substring(i + 1, denEnd + 1));
+
+                numerator = numerator.replace(/\+/g, '\\ +\\ ').replace(/\-/g, '\\ -\\ ');
+                denominator = denominator.replace(/\+/g, '\\ +\\ ').replace(/\-/g, '\\ -\\ ');
+                
+                let frac = `\\frac{${numerator}}{${denominator}}`;
+                str = str.substring(0, numStart) + frac + str.substring(denEnd + 1);
+                
+                i = str.indexOf('/', numStart + frac.length);
+            } else {
+                break; 
+            }
+        }
+        return str;
+    }
+
+    document.getElementById('convertBtn').addEventListener('click', function() {
+        const rawInput = document.getElementById('cb-input').value;
+        if (!rawInput.trim()) {
+            alert('Please enter some equations first!');
+            return;
+        }
+
+        const lines = rawInput.split('\n');
+        let processedLines = [];
+        let hasTextColumn = false;
+        
+        const parsedLines = lines.map(line => {
+            let trimmed = line.trim();
+            if (!trimmed) return null;
+
+            let equation = trimmed;
+            let textPart = "";
+
+            if (trimmed.includes('|')) {
+                let matrixEndIdx = trimmed.lastIndexOf(']]');
+                let splitIdx = trimmed.indexOf('|', matrixEndIdx !== -1 ? matrixEndIdx : 0);
+                
+                if (splitIdx !== -1) {
+                    equation = trimmed.substring(0, splitIdx).trim();
+                    textPart = trimmed.substring(splitIdx + 1).trim();
+                } else if (!trimmed.includes('[[')) {
+                    // Fallback for standard lines without matrices
+                    let parts = trimmed.split('|');
+                    equation = parts[0].trim();
+                    textPart = parts.slice(1).join('|').trim();
+                }
+            } else {
+                let textMatch = trimmed.match(/(.*?)\s{2,}([A-Za-z].*)$/);
+                if (textMatch) {
+                    equation = textMatch[1].trim();
+                    textPart = textMatch[2].trim();
+                }
+            }
+
+            if (textPart) hasTextColumn = true;
+
+            // STEP 1: PARSE MATRICES & AUGMENTED MATRICES VIA REGEX
+            equation = equation.replace(/\[\[([^\]]+)\]\]/g, function(match, innerContent) {
+                let rows = innerContent.split(';');
+                let firstRow = rows[0] || "";
+                let isAugmented = firstRow.includes('||');
+                
+                let formattedRows = rows.map(row => {
+                    if (isAugmented) {
+                        let parts = row.split('||');
+                        let leftCols = parts[0] ? parts[0].split(',').map(c => c.trim()) : [];
+                        let rightCols = parts[1] ? parts[1].split(',').map(c => c.trim()) : [];
+                        return leftCols.join(' & ') + ' & ' + rightCols.join(' & ');
+                    } else {
+                        let cols = row.split(',').map(c => c.trim());
+                        return cols.join(' & ');
+                    }
+                });
+
+                if (isAugmented) {
+                    let sampleParts = firstRow.split('||');
+                    let leftCount = sampleParts[0] ? sampleParts[0].split(',').length : 1;
+                    let rightCount = sampleParts[1] ? sampleParts[1].split(',').length : 1;
+                    let colSpec = 'c'.repeat(leftCount) + '|' + 'c'.repeat(rightCount);
+                    return '\\left[\\begin{array}{' + colSpec + '} ' + formattedRows.join(' \\\\ ') + ' \\end{array}\\right]';
+                } else {
+                    return '\\begin{bmatrix} ' + formattedRows.join(' \\\\ ') + ' \\end{bmatrix}';
+                }
+            });
+
+            // STEP 2: FORMAT FRACTIONS
+            equation = autoFormatFractions(equation);
+
+            // STEP 3: PARSE SQUARE ROOTS WITH REGEX
+            equation = equation.replace(/sqrt\(([^)]+)\)/g, function(match, inside) {
+                return '\\sqrt{' + inside.replace(/\+/g, '\\ +\\ ').replace(/\-/g, '\\ -\\ ') + '}';
+            });
+            equation = equation.replace(/sqrt([a-zA-Z0-9\.]+)/g, function(match, inside) {
+                return '\\sqrt{' + inside.replace(/\+/g, '\\ +\\ ').replace(/\-/g, '\\ -\\ ') + '}';
+            });
+
+            // STEP 4: RUN PI PARSER
+            equation = equation.replace(/\bpi\b/g, '\\pi ');
+            equation = equation.replace(/([0-9])pi([a-zA-Z0-9]*)/g, '$1\\pi $2');
+
+            // STEP 5: RUN DOMAIN / CONSTRAINT PARSER (Shielded from processing internal array environments)
+            if (equation.includes(',') && !equation.includes('array') && !equation.includes('matrix')) {
+                let eqParts = equation.split(',');
+                let mainEq = eqParts[0].trim();
+                let constraint = eqParts.slice(1).join(',').trim();
+                
+                if (/[a-zA-Z]{2,}/.test(constraint)) {
+                    constraint = `\\text{${constraint}}`;
+                }
+                equation = `${mainEq}, ${constraint}`;
+            }
+            
+
+            // STEP 6: GRID ALIGNMENT SETUP
+            if (equation.includes('=') && !equation.includes('&=')) {
+                equation = equation.replace('=', '&=');
+            } else if (!equation.includes('=')) {
+                equation = '&' + equation;
+            }
+
+            // STEP 7: TRANSLATE OTHER MATH FUNCTIONS
+            equation = equation.replace(/(^|[^a-zA-Z])(arcsin|arccos|arctan|sin|cos|tan|csc|sec|cot|ln|log|int)(?![a-zA-Z])/g, '$1\\$2');
+
+            return { equation, textPart };
+        }).filter(line => line !== null);
+
+        for (let i = 0; i < parsedLines.length; i++) {
+            let lineItem = parsedLines[i];
+            let currentLineString = lineItem.equation;
+
+            if (hasTextColumn) {
+                if (lineItem.textPart) {
+                    currentLineString += ` &&\\text{${lineItem.textPart}}`;
+                } else {
+                    currentLineString += ` &&`; 
+                }
+            }
+
+            if (i < parsedLines.length - 1) {
+                currentLineString += ` \\\\[10pt]`;
+            }
+
+            processedLines.push(currentLineString);
+        }
+
+        const finalMathJax = `\\( \\begin{aligned} ${processedLines.join(' ')} \\end{aligned} \\)`.replace('\\( \\begin{aligned}  ', '\\( \\begin{aligned} ').replace(' \\ )', ' \\)');
+        
+        const targetOutputBox = document.getElementById('cb-mathjax-output');
+        targetOutputBox.textContent = finalMathJax;
+
+        const masterRenderBox = document.getElementById('render-box');
+        masterRenderBox.innerHTML = finalMathJax;
+        MathJax.typesetPromise([masterRenderBox]);
+    });
+
+    document.getElementById('cbCopyBtn').addEventListener('click', function() {
+        const textToCopy = document.getElementById('cb-mathjax-output').textContent;
+        if (textToCopy === 'Generated code will appear here...') return;
+
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            const copyBtn = document.getElementById('cbCopyBtn');
+            copyBtn.textContent = 'Copied!';
+            copyBtn.style.background = '#4CAF50';
+            copyBtn.style.color = 'white';
+            
+            setTimeout(() => {
+                copyBtn.textContent = 'Copy CB Code';
+                copyBtn.style.background = 'black';
+            }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy text: ', err);
+        });
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', function() {
+        document.getElementById('cb-input').value = '';
+        document.getElementById('cb-mathjax-output').textContent = 'Generated code will appear here...';
+        document.getElementById('render-box').innerHTML = '\\( \\text{Waiting for input...} \\)';
+    });
 </script>
 
 </body>

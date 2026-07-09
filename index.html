@@ -15,8 +15,28 @@
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f0f2f5; color: #333; }
-        .master-nav { text-align: center; margin-bottom: 30px; padding: 10px; background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .nav-btn { padding: 10px 20px; margin: 0 10px; cursor: pointer; border: 2px solid gray; background: white; color: black; border-radius: 20px; font-weight: bold; }
+        .master-nav { 
+    text-align: center; 
+    margin-bottom: 30px; 
+    padding: 15px; 
+    background: white; 
+    border-radius: 8px; 
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap; /* Ensures responsiveness if the window shrinks */
+}
+       .nav-btn { 
+    padding: 8px 16px; 
+    cursor: pointer; 
+    border: 2px solid gray; 
+    background: white; 
+    color: black; 
+    border-radius: 20px; 
+    font-weight: bold; 
+}
         .nav-btn.active { background: black; color: white; }
         
         .wrapper { max-width: 1200px; margin: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
@@ -37,25 +57,31 @@
         input, textarea { width: 90%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 5px; font-family: 'Courier New', monospace; box-sizing: border-box; }
         
         #legacy-input { height: 70vh; resize: none; width: 100%; }
-        #cb-input { height: 180px; resize: vertical; width: 100%; margin-bottom: 15px; }
+        #cb-input { height: 180px; resize: vertical; width: 100%; margin-bottom: 15px; font-family: 'Courier New', monospace; }
         
-        .btn-group { margin-top: 15px; display: flex; gap: 10px; }
+        .btn-group { margin-top: 15px; margin-bottom: 25px; display: flex; gap: 10px; }
         button { padding: 10px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; }
         .btn-blue { background: black; color: white; }
         .btn-green { background: black; color: white; }
         .btn-light { background: #eee; color: black; border: 1px solid #ccc; }
 
-        #render-box, #code-box, #legacy-output { 
-            margin-top: 20px; padding: 20px; border: 2px dashed #e0e0e0; border-radius: 8px; min-height: 150px; background: #fafafa;
+        #render-box, #code-box, #legacy-output, #cb-live-render { 
+            margin-top: 10px; padding: 20px; border: 2px dashed #e0e0e0; border-radius: 8px; min-height: 120px; background: #fafafa; color: black;
         }
         #code-box { font-family: 'Courier New', monospace; white-space: pre-wrap; display: none; color: #d81b60; }
         
         .cb-output-box {
-            margin-top: 20px; padding: 20px; border: 2px dashed #e0e0e0; border-radius: 8px; min-height: 100px; 
+            margin-top: 10px; padding: 20px; border: 2px dashed #e0e0e0; border-radius: 8px; min-height: 100px; 
             background: #212529; color: #f8f9fa; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-all;
         }
 
         .hidden { display: none !important; }
+
+        #output-proof-controls, #output-cb-controls {
+    margin-bottom: 20px;
+    display: flex;
+    gap: 10px;
+}
     </style>
 </head>
 <body>
@@ -109,7 +135,7 @@
     </div>
 
     <div class="card">
-        <h2>2. Preview</h2>
+        <h2>2. Preview Workbench</h2>
         
         <div id="output-proof-controls">
             <button class="btn-blue" onclick="copyToClipboard()">Copy LaTeX Code</button>
@@ -130,6 +156,10 @@
         </div>
 
         <div id="cb-display-container" class="hidden">
+            <label style="font-weight: bold; display: block; margin-bottom: 4px; color: #555; font-size: 0.9em;">Live Render Preview:</label>
+            <div id="cb-live-render">Formatted equations will render here instantly...</div>
+            
+            <label style="font-weight: bold; display: block; margin-top: 15px; margin-bottom: 4px; color: #555; font-size: 0.9em;">Generated Output Code:</label>
             <div id="cb-mathjax-output" class="cb-output-box">Generated code will appear here...</div>
         </div>
     </div>
@@ -352,7 +382,7 @@
                     openBr--;
                 }
                 else if (/[a-zA-Z0-9\.\^\_\\*]/.test(c)) {
-                    // Math characters pass
+                    // Normal characters
                 }
                 else {
                     if (openP === 0 && openB === 0 && openBr === 0) break;
@@ -391,7 +421,7 @@
                     openBr--;
                 }
                 else if (/[a-zA-Z0-9\.\^\_\\*]/.test(c)) {
-                    // Math characters pass
+                    // Normal characters
                 }
                 else {
                     if (openP === 0 && openB === 0 && openBr === 0) break;
@@ -594,6 +624,7 @@
 
         // --- MASTER SYSTEM ROUTER ---
         let finalMathJax = "";
+        let liveRenderHTML = "";
         let isAugmentedSystem = rawInput.includes('::');
 
         if (isAugmentedSystem) {
@@ -609,21 +640,26 @@
                 }
             });
             finalMathJax = blockLines.filter(l => l !== "").join('\n');
+            liveRenderHTML = finalMathJax;
         } 
         else if (originalLineCount === 1 && !hasTextColumn) {
             let cleanStandalone = processedLines.join(' ').replace(/^&/, '');
             finalMathJax = `\\( ${cleanStandalone} \\)`;
+            liveRenderHTML = finalMathJax;
         } 
         else {
             finalMathJax = `\\( \\begin{aligned} ${processedLines.join(' ')} \\end{aligned} \\)`.replace('\\( \\begin{aligned}  ', '\\( \\begin{aligned} ').replace(' \\ )', ' \\)');
+            liveRenderHTML = finalMathJax;
         }
         
+        // Output code to standard code viewport
         const targetOutputBox = document.getElementById('cb-mathjax-output');
         targetOutputBox.textContent = finalMathJax;
 
-        const masterRenderBox = document.getElementById('render-box');
-        masterRenderBox.innerHTML = finalMathJax;
-        MathJax.typesetPromise([masterRenderBox]);
+        // NEW: Draw instant live rendering updates into the embedded workbench panel
+        const liveRenderBox = document.getElementById('cb-live-render');
+        liveRenderBox.innerHTML = liveRenderHTML;
+        MathJax.typesetPromise([liveRenderBox]);
     });
 
     document.getElementById('cbCopyBtn').addEventListener('click', function() {
@@ -644,7 +680,7 @@
     document.getElementById('clearBtn').addEventListener('click', function() {
         document.getElementById('cb-input').value = '';
         document.getElementById('cb-mathjax-output').textContent = 'Generated code will appear here...';
-        document.getElementById('render-box').innerHTML = '\\( \\text{Waiting for input...} \\)';
+        document.getElementById('cb-live-render').innerHTML = 'Formatted equations will render here instantly...';
     });
 </script>
 

@@ -210,66 +210,99 @@
         MathJax.typesetPromise([output]);
     }
 
-    // --- MAIN TRANSLATION HANDLER ---
-    function parseCustomShorthandMacros(equation) {
-        if (equation.includes('longdiv') || equation.includes('\\begin{array}')) {
-            return equation;
+    // --- SMART DELIMITER SCALER ---
+    function autoScaleDelimiters(str) {
+        let openStack = [];
+        let replacements = [];
+
+        for (let i = 0; i < str.length; i++) {
+            if (str[i] === '(' || str[i] === '[') {
+                let isScaled = false;
+                if (i >= 5 && str.substring(i - 5, i) === '\\left') isScaled = true;
+                openStack.push({ index: i, char: str[i], isScaled: isScaled });
+            } else if (str[i] === ')' || str[i] === ']') {
+                let isScaled = false;
+                if (i >= 6 && str.substring(i - 6, i) === '\\right') isScaled = true;
+
+                if (openStack.length > 0) {
+                    let matchIndex = -1;
+                    let targetOpen = str[i] === ')' ? '(' : '[';
+                    for (let j = openStack.length - 1; j >= 0; j--) {
+                        if (openStack[j].char === targetOpen) {
+                            matchIndex = j;
+                            break;
+                        }
+                    }
+                    
+                    if (matchIndex !== -1) {
+                        let openNode = openStack[matchIndex];
+                        openStack.splice(matchIndex, 1);
+                        
+                        if (!openNode.isScaled && !isScaled) {
+                            let innerContent = str.substring(openNode.index + 1, i);
+                            if (innerContent.includes('\\frac') || innerContent.includes('\\sqrt') || innerContent.includes('\\begin') || innerContent.includes('\\left')) {
+                                replacements.push({ openIdx: openNode.index, closeIdx: i, openChar: openNode.char, closeChar: str[i] });
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        // 1. SHIELD STEP: Protect inner fractional exponents from the fraction engine
-        // Matches slashes inside ^{...} or ^(...) and replaces them with a temporary string marker
-        equation = equation.replace(/\^\{\s*(-?\s*\d+)\s*\/\s*(\d+)\s*\}/g, '^{$1__EXP_SLASH__$2}');
-        equation = equation.replace(/\^\(\s*(-?\s*\d+)\s*\/\s*(\d+)\s*\)/g, '^($1__EXP_SLASH__$2)');
-
-        // 2. MATRICES & AUGMENTED MATRICES VIA REGEX
-        equation = equation.replace(/\[\[([^\]]+)\]\]/g, function(match, innerContent) {
-            let rows = innerContent.split(';');
-            let firstRow = rows[0] || "";
-            let isAugmented = firstRow.includes('||');
-            
-            let formattedRows = rows.map(row => {
-                if (isAugmented) {
-                    let parts = row.split('||');
-                    let leftCols = parts[0] ? parts[0].split(',').map(c => c.trim()) : [];
-                    let rightCols = parts[1] ? parts[1].split(',').map(c => c.trim()) : [];
-                    return leftCols.join(' & ') + ' & ' + rightCols.join(' & ');
-                } else {
-                    let cols = row.split(',').map(c => c.trim());
-                    return cols.join(' & ');
-                }
-            });
-
-            if (isAugmented) {
-                let sampleParts = firstRow.split('||');
-                let leftCount = sampleParts[0] ? sampleParts[0].split(',').length : 1;
-                let rightCount = sampleParts[1] ? sampleParts[1].split(',').length : 1;
-                let colSpec = 'c'.repeat(leftCount) + '|' + 'c'.repeat(rightCount);
-                return '\\left[\\begin{array}{' + colSpec + '} ' + formattedRows.join(' \\\\ ') + ' \\end{array}\\right]';
-            } else {
-                return '\\begin{bmatrix} ' + formattedRows.join(' \\\\ ') + ' \\end{bmatrix}';
-            }
-        });
-
-        // 3. PARSE SQUARE ROOTS
-        equation = equation.replace(/sqrt\(([^)]+)\)/g, '\\sqrt{$1}');
-        equation = equation.replace(/sqrt([a-zA-Z0-9\.\^\{\}]+)/g, '\\sqrt{$1}');
-
-        // 4. RUN MAIN FRACTIONS ENGINE (Now completely safe from exponent slashes)
-        equation = autoFormatFractions(equation);
-
-        // 5. RESTORE STEP: Convert shielded exponent markers back into clean LaTeX fractions
-        equation = equation.replace(/(-?\d+)__EXP_SLASH__(\d+)/g, '\\frac{$1}{$2}');
-
-        // 6. PI EXTENSION
-        equation = equation.replace(/\bpi\b/g, '\\pi ');
-        equation = equation.replace(/([0-9])pi([a-zA-Z0-9]*)/g, '$1\\pi $2');
-
-        // 7. STANDARD TRIG FUNCTIONS
-        equation = equation.replace(/(^|[^a-zA-Z])(sqrt|cdot|arcsin|arccos|arctan|sin|cos|tan|csc|sec|cot|ln|log|int)(?![a-zA-Z])/g, '$1\\$2');
-
-        return equation;
+        let chars = str.split('');
+        for (let rep of replacements) {
+            chars[rep.openIdx] = '\\left' + rep.openChar;
+            chars[rep.closeIdx] = '\\right' + rep.closeChar;
+        }
+        return chars.join('');
     }
 
+    // --- SMART ROOT PARSER ---
+    function parseRoots(str) {
+        let targets = [
+            { cmd: 'cbrt', tex: '\\sqrt[3]' },
+            { cmd: 'sqrt', tex: '\\sqrt' }
+        ];
+
+        for (let t of targets) {
+            let safety = 0;
+            let searchIdx = 0;
+            while (safety < 200) {
+                safety++;
+                let idx = str.indexOf(t.cmd + '(', searchIdx);
+                if (idx === -1) break;
+
+                let open = 0;
+                let endIdx = -1;
+                for (let i = idx + t.cmd.length; i < str.length; i++) {
+                    if (str[i] === '(') open++;
+                    else if (str[i] === ')') {
+                        open--;
+                        if (open === 0) {
+                            endIdx = i;
+                            break;
+                        }
+                    }
+                }
+
+                if (endIdx !== -1) {
+                    let inner = str.substring(idx + t.cmd.length + 1, endIdx);
+                    let replacement = t.tex + '{' + inner + '}';
+                    str = str.substring(0, idx) + replacement + str.substring(endIdx + 1);
+                    searchIdx = idx + replacement.length;
+                } else {
+                    searchIdx = idx + 1;
+                }
+            }
+        }
+        
+        str = str.replace(/(^|[^\\])cbrt([a-zA-Z0-9\.\^]+)/g, '$1\\sqrt[3]{$2}');
+        str = str.replace(/(^|[^\\])sqrt([a-zA-Z0-9\.\^]+)/g, '$1\\sqrt{$2}');
+        
+        return str;
+    }
+
+    // --- SMART FRACTION PARSER ---
     function autoFormatFractions(str) {
         function stripOuterParens(s) {
             s = s.trim();
@@ -286,89 +319,86 @@
         }
 
         let safetyCounter = 0;
+        let searchEnd = str.length;
         
-        while (safetyCounter < 50) {
+        while (safetyCounter < 300) {
             safetyCounter++;
-            let targetIdx = -1;
-            
-            // Scan right-to-left for division slashes
-            for (let k = str.length - 1; k >= 0; k--) {
-                if (str[k] === '/') {
-                    let insideCompiledFrac = false;
-                    let openBraces = 0;
-                    for (let m = k; m >= 0; m--) {
-                        if (str[m] === '}') openBraces++;
-                        if (str[m] === '{') openBraces--;
-                        if (str.substring(m, m+5) === '\\frac' && openBraces < 0) {
-                            insideCompiledFrac = true;
-                            break;
-                        }
-                    }
-                    if (!insideCompiledFrac) {
-                        targetIdx = k;
-                        break;
-                    }
-                }
-            }
+            let i = str.lastIndexOf('/', searchEnd - 1);
+            if (i === -1) break;
 
-            if (targetIdx === -1) break;
-            let i = targetIdx;
-
-            // Numerator extraction bounds
             let start = i - 1;
             while (start >= 0 && str[start] === ' ') start--; 
             let numStart = start;
-            
-            if (str[start] === ')') {
-                let parens = 0;
-                while (numStart >= 0) {
-                    if (str[numStart] === ')') parens++;
-                    if (str[numStart] === '(') parens--;
-                    if (parens === 0) break;
-                    numStart--;
-                }
-                while (numStart - 1 >= 0 && /[a-zA-Z0-9\\\_]/.test(str[numStart - 1])) numStart--;
-            } else if (str[start] === '}') {
-                let braces = 0;
-                while (numStart >= 0) {
-                    if (str[numStart] === '}') braces++;
-                    if (str[numStart] === '{') braces--;
-                    if (braces === 0) break;
-                    numStart--;
-                }
-                while (numStart - 1 >= 0 && /[a-zA-Z0-9\\\_]/.test(str[numStart - 1])) numStart--;
-            } else {
-                while (numStart >= 0 && /[a-zA-Z0-9\.\^\_\\\{\}\(\)\*]/.test(str[numStart])) numStart--;
-                numStart++; 
-            }
 
-            // Denominator extraction bounds
+            let openP = 0; 
+            let openB = 0; 
+            let openBr = 0; 
+            
+            while (numStart >= 0) {
+                let c = str[numStart];
+                if (c === ')') openP++;
+                else if (c === '(') {
+                    if (openP === 0) break; 
+                    openP--;
+                }
+                else if (c === '}') openB++;
+                else if (c === '{') {
+                    if (openB === 0) break; 
+                    openB--;
+                }
+                else if (c === ']') openBr++;
+                else if (c === '[') {
+                    if (openBr === 0) break; 
+                    openBr--;
+                }
+                else if (/[a-zA-Z0-9\.\^\_\\*]/.test(c)) {
+                    // Math characters pass
+                }
+                else {
+                    if (openP === 0 && openB === 0 && openBr === 0) break;
+                }
+                numStart--;
+            }
+            numStart++; 
+
             let end = i + 1;
             while (end < str.length && str[end] === ' ') end++; 
             let denEnd = end;
+
+            openP = 0;
+            openB = 0;
+            openBr = 0;
             
-            if (str[end] === '(') {
-                let parens = 0;
-                while (denEnd < str.length) {
-                    if (str[denEnd] === '(') parens++;
-                    if (str[denEnd] === ')') parens--;
-                    if (parens === 0) break;
-                    denEnd++;
-                }
-            } else {
-                while (denEnd < str.length && /[a-zA-Z0-9\.\^\_\\\{\}\(\)\*]/.test(str[denEnd])) {
-                    if (str[denEnd] === '{') {
-                        let braceCount = 1;
-                        while (denEnd < str.length && braceCount > 0) {
-                            denEnd++;
-                            if (str[denEnd] === '{') braceCount++;
-                            if (str[denEnd] === '}') braceCount--;
-                        }
-                    }
-                    denEnd++;
-                }
-                denEnd--; 
+            if (str[denEnd] === '+' || str[denEnd] === '-') {
+                denEnd++;
             }
+
+            while (denEnd < str.length) {
+                let c = str[denEnd];
+                if (c === '(') openP++;
+                else if (c === ')') {
+                    if (openP === 0) break; 
+                    openP--;
+                }
+                else if (c === '{') openB++;
+                else if (c === '}') {
+                    if (openB === 0) break; 
+                    openB--;
+                }
+                else if (c === '[') openBr++;
+                else if (c === ']') {
+                    if (openBr === 0) break; 
+                    openBr--;
+                }
+                else if (/[a-zA-Z0-9\.\^\_\\*]/.test(c)) {
+                    // Math characters pass
+                }
+                else {
+                    if (openP === 0 && openB === 0 && openBr === 0) break;
+                }
+                denEnd++;
+            }
+            denEnd--; 
 
             if (numStart >= 0 && denEnd < str.length && numStart <= start && denEnd >= end) {
                 let numerator = stripOuterParens(str.substring(numStart, i));
@@ -379,11 +409,65 @@
                 
                 let frac = `\\frac{${numerator}}{${denominator}}`;
                 str = str.substring(0, numStart) + frac + str.substring(denEnd + 1);
+                searchEnd = str.length; 
             } else {
-                break; 
+                searchEnd = i; 
             }
         }
         return str;
+    }
+
+    function parseCustomShorthandMacros(equation) {
+        if (equation.includes('longdiv') || equation.includes('\\begin{array}')) {
+            return equation;
+        }
+
+        // 1. MATRICES & AUGMENTED MATRICES VIA REGEX (Outputs pre-scaled literal boundaries)
+        equation = equation.replace(/\[\[([^\]]+)\]\]/g, function(match, innerContent) {
+            let rows = innerContent.split(';');
+            let firstRow = rows[0] || "";
+            let isAugmented = firstRow.includes('::');
+            
+            let formattedRows = rows.map(row => {
+                if (isAugmented) {
+                    let parts = row.split('::');
+                    let leftCols = parts[0] ? parts[0].split(',').map(c => c.trim()) : [];
+                    let rightCols = parts[1] ? parts[1].split(',').map(c => c.trim()) : [];
+                    return leftCols.join(' & ') + ' & ' + rightCols.join(' & ');
+                } else {
+                    let cols = row.split(',').map(c => c.trim());
+                    return cols.join(' & ');
+                }
+            });
+
+            if (isAugmented) {
+                let sampleParts = firstRow.split('::');
+                let leftCount = sampleParts[0] ? sampleParts[0].split(',').length : 1;
+                let rightCount = sampleParts[1] ? sampleParts[1].split(',').length : 1;
+                let colSpec = 'c'.repeat(leftCount) + '|' + 'c'.repeat(rightCount);
+                return '\\left[\\begin{array}{' + colSpec + '} ' + formattedRows.join(' \\\\ ') + ' \\end{array}\\right]';
+            } else {
+                return '\\begin{bmatrix} ' + formattedRows.join(' \\\\ ') + ' \\end{bmatrix}';
+            }
+        });
+
+        // 2. PARSE ROOTS
+        equation = parseRoots(equation);
+
+        // 3. RUN SMART BRACKET-BALANCING FRACTIONS ENGINE
+        equation = autoFormatFractions(equation);
+
+        // 4. PI EXTENSION
+        equation = equation.replace(/\bpi\b/g, '\\pi ');
+        equation = equation.replace(/([0-9])pi([a-zA-Z0-9]*)/g, '$1\\pi $2');
+
+        // 5. STANDARD TRIG FUNCTIONS
+        equation = equation.replace(/(^|[^a-zA-Z\\])(arcsin|arccos|arctan|sin|cos|tan|csc|sec|cot|ln|log|int|cdot)(?![a-zA-Z])/g, '$1\\$2');
+
+        // 6. AUTO-SCALE DELIMITERS (Will skip pre-compiled matrix arrays perfectly)
+        equation = autoScaleDelimiters(equation);
+
+        return equation;
     }
 
     // --- MAIN GENERATOR INTERFACE LOGIC ---
@@ -426,10 +510,12 @@
         const lines = rawInput.split('\n');
         let processedLines = [];
         let hasTextColumn = false;
+        let originalLineCount = 0;
         
         const parsedLines = lines.map(line => {
             let trimmed = line.trim();
             if (!trimmed) return null;
+            originalLineCount++;
 
             let equation = trimmed;
             let textPart = "";
@@ -453,20 +539,27 @@
             if (!isPlaceholder) {
                 equation = parseCustomShorthandMacros(equation);
 
-                if (equation.includes(',') && !equation.includes('array') && !equation.includes('matrix')) {
+                if (equation.includes(',') && !equation.includes('array') && !equation.includes('matrix') && !equation.includes('bmatrix')) {
                     let eqParts = equation.split(',');
                     let mainEq = eqParts[0].trim();
                     let constraint = eqParts.slice(1).join(',').trim();
-                    if (/[a-zA-Z]{2,}/.test(constraint)) {
+                    
+                    let textCheck = constraint.replace(/\\[a-zA-Z]+/g, '').trim();
+                    if (/[a-zA-Z]{2,}/.test(textCheck)) {
                         constraint = `\\text{${constraint}}`;
                     }
                     equation = `${mainEq}, ${constraint}`;
                 }
 
-                if (!equation.includes('array') && !equation.includes('matrix')) {
+                // SECURITY CHECK: Apply alignment logic to non-matrix statements only
+                if (!equation.includes('array') && !equation.includes('matrix') && !equation.includes('bmatrix')) {
                     if (equation.includes('=') && !equation.includes('&=')) {
                         equation = equation.replace('=', '&=');
                     } else if (!equation.includes('=')) {
+                        equation = '&' + equation;
+                    }
+                } else {
+                    if (equation.startsWith('=')) {
                         equation = '&' + equation;
                     }
                 }
@@ -499,10 +592,29 @@
             processedLines.push(currentLineString);
         }
 
+        // --- MASTER SYSTEM ROUTER ---
         let finalMathJax = "";
-        if (parsedLines.length === 1 && processedLines[0].includes('\\begin{array}')) {
-            finalMathJax = `\\( ${processedLines.join(' ')} \\)`;
-        } else {
+        let isAugmentedSystem = rawInput.includes('::');
+
+        if (isAugmentedSystem) {
+            let blockLines = processedLines.map(line => {
+                let trimmedLine = line.trim();
+                if (!trimmedLine) return "";
+                
+                if (trimmedLine.includes('\\left[') || trimmedLine.includes('[[') || trimmedLine.includes('\\begin{array}')) {
+                    return `\\( ${trimmedLine} \\)`;
+                } else {
+                    let cleanText = trimmedLine.replace(/&&\\text\{.*?\}/g, '').replace(/&&$/, '').trim();
+                    return `<div>${cleanText}</div>`;
+                }
+            });
+            finalMathJax = blockLines.filter(l => l !== "").join('\n');
+        } 
+        else if (originalLineCount === 1 && !hasTextColumn) {
+            let cleanStandalone = processedLines.join(' ').replace(/^&/, '');
+            finalMathJax = `\\( ${cleanStandalone} \\)`;
+        } 
+        else {
             finalMathJax = `\\( \\begin{aligned} ${processedLines.join(' ')} \\end{aligned} \\)`.replace('\\( \\begin{aligned}  ', '\\( \\begin{aligned} ').replace(' \\ )', ' \\)');
         }
         

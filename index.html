@@ -22,7 +22,6 @@
         .wrapper { max-width: 1200px; margin: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         
-        /* Notice Box Style */
         .notice { 
             background: #D3D3D3; 
             border-left: 5px solid black; 
@@ -34,11 +33,9 @@
         }
         .notice strong { color: black; }
 
-        /* General Inputs */
         table { width: 100%; border-collapse: collapse; }
         input, textarea { width: 90%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 5px; font-family: 'Courier New', monospace; box-sizing: border-box; }
         
-        /* Specific Textarea Heights */
         #legacy-input { height: 70vh; resize: none; width: 100%; }
         #cb-input { height: 180px; resize: vertical; width: 100%; margin-bottom: 15px; }
         
@@ -48,7 +45,6 @@
         .btn-green { background: black; color: white; }
         .btn-light { background: #eee; color: black; border: 1px solid #ccc; }
 
-        /* Output Boxes */
         #render-box, #code-box, #legacy-output { 
             margin-top: 20px; padding: 20px; border: 2px dashed #e0e0e0; border-radius: 8px; min-height: 150px; background: #fafafa;
         }
@@ -58,9 +54,6 @@
             margin-top: 20px; padding: 20px; border: 2px dashed #e0e0e0; border-radius: 8px; min-height: 100px; 
             background: #212529; color: #f8f9fa; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-all;
         }
-
-        .features-list { padding-left: 20px; font-size: 0.9em; line-height: 1.5; color: #555; }
-        .features-list li { margin-bottom: 8px; }
 
         .hidden { display: none !important; }
     </style>
@@ -102,27 +95,15 @@
         <div id="input-cb" class="hidden">
             <h2>1. CB-Ready MathJax Generator</h2>
             <div class="notice">
-                <strong>Tip:</strong> To add an explanation, separate it from the equation using a vertical bar <code>|</code> or multiple spaces (e.g., <code>y = 2x + 3 | Given equation</code>).
+                <strong>Tip:</strong> Separate math from explanation columns using a single vertical bar <code>|</code>.
             </div>
-            <label style="font-weight: bold; display: block; margin-bottom: 8px;">Enter Raw Equations (one per line):</label>
-            <textarea id="cb-input" placeholder="y = 2x + 3&#10;y - 3 = 2x&#10;x = (y - 3) / 2"></textarea>
+            <label style="font-weight: bold; display: block; margin-bottom: 8px;">Enter Raw Equations:</label>
+            <textarea id="cb-input" placeholder="Enter formulas..."></textarea>
             
             <div class="btn-group" style="justify-content: flex-end; margin-bottom: 20px;">
                 <button class="btn-light" id="clearBtn">Clear</button>
                 <button class="btn-blue" id="convertBtn">Format MathJax</button>
             </div>
-
-            <hr style="border: 0; border-top: 1px solid #eee; margin-bottom: 15px;">
-            
-            <h3 style="font-size: 1.1em; margin-bottom: 10px;">What This Formatter Does:</h3>
-            <ul class="features-list">
-                <li>Wraps output in CB-friendly <code>\( \)</code> inline-block delimiters.</li>
-                <li>Utilizes the MathJax <code>\begin{aligned} ... \end{aligned}</code> environment.</li>
-                <li>Forces strict column-alignment by converting <code>=</code> to <code>&=</code>.</li>
-                <li>Injects <code>\\[10pt]</code> vertical breaks for clean reading.</li>
-                <li>Detects text explanations, formatting them left-aligned using <code>&\quad \text{...}</code>.</li>
-                <li>Compresses final code into a <strong>strict single line</strong>.</li>
-            </ul>
         </div>
 
     </div>
@@ -157,7 +138,6 @@
 <script>
     let isCodeView = false;
 
-    // --- MASTER NAVIGATION LOGIC ---
     function switchMode(mode) {
         const isProof = mode === 'proof';
         const isFree = mode === 'free';
@@ -181,7 +161,6 @@
         document.getElementById('cb-display-container').classList.toggle('hidden', !isCb);
     }
 
-    // --- MODE 1: PROOF BUILDER LOGIC ---
     function addRow() {
         const row = document.createElement('tr');
         row.innerHTML = `<td><input type="text" class="math-in" oninput="process()"></td>
@@ -206,7 +185,6 @@
         });
 
         const finalCode = `\\(\\begin{aligned}\n${lines.join(' \\\\\\\\ \n')}\n\\end{aligned}\\)`;
-        
         document.getElementById('code-box').textContent = finalCode;
         const renderBox = document.getElementById('render-box');
         renderBox.innerHTML = finalCode;
@@ -225,7 +203,6 @@
         alert("LaTeX copied!");
     }
 
-    // --- MODE 2: LEGACY LOGIC ---
     function processLegacy() {
         const input = document.getElementById('legacy-input');
         const output = document.getElementById('legacy-output');
@@ -233,7 +210,66 @@
         MathJax.typesetPromise([output]);
     }
 
-    // --- MODE 3: CB OUTPUT LOGIC ---
+    // --- MAIN TRANSLATION HANDLER ---
+    function parseCustomShorthandMacros(equation) {
+        if (equation.includes('longdiv') || equation.includes('\\begin{array}')) {
+            return equation;
+        }
+
+        // 1. SHIELD STEP: Protect inner fractional exponents from the fraction engine
+        // Matches slashes inside ^{...} or ^(...) and replaces them with a temporary string marker
+        equation = equation.replace(/\^\{\s*(-?\s*\d+)\s*\/\s*(\d+)\s*\}/g, '^{$1__EXP_SLASH__$2}');
+        equation = equation.replace(/\^\(\s*(-?\s*\d+)\s*\/\s*(\d+)\s*\)/g, '^($1__EXP_SLASH__$2)');
+
+        // 2. MATRICES & AUGMENTED MATRICES VIA REGEX
+        equation = equation.replace(/\[\[([^\]]+)\]\]/g, function(match, innerContent) {
+            let rows = innerContent.split(';');
+            let firstRow = rows[0] || "";
+            let isAugmented = firstRow.includes('||');
+            
+            let formattedRows = rows.map(row => {
+                if (isAugmented) {
+                    let parts = row.split('||');
+                    let leftCols = parts[0] ? parts[0].split(',').map(c => c.trim()) : [];
+                    let rightCols = parts[1] ? parts[1].split(',').map(c => c.trim()) : [];
+                    return leftCols.join(' & ') + ' & ' + rightCols.join(' & ');
+                } else {
+                    let cols = row.split(',').map(c => c.trim());
+                    return cols.join(' & ');
+                }
+            });
+
+            if (isAugmented) {
+                let sampleParts = firstRow.split('||');
+                let leftCount = sampleParts[0] ? sampleParts[0].split(',').length : 1;
+                let rightCount = sampleParts[1] ? sampleParts[1].split(',').length : 1;
+                let colSpec = 'c'.repeat(leftCount) + '|' + 'c'.repeat(rightCount);
+                return '\\left[\\begin{array}{' + colSpec + '} ' + formattedRows.join(' \\\\ ') + ' \\end{array}\\right]';
+            } else {
+                return '\\begin{bmatrix} ' + formattedRows.join(' \\\\ ') + ' \\end{bmatrix}';
+            }
+        });
+
+        // 3. PARSE SQUARE ROOTS
+        equation = equation.replace(/sqrt\(([^)]+)\)/g, '\\sqrt{$1}');
+        equation = equation.replace(/sqrt([a-zA-Z0-9\.\^\{\}]+)/g, '\\sqrt{$1}');
+
+        // 4. RUN MAIN FRACTIONS ENGINE (Now completely safe from exponent slashes)
+        equation = autoFormatFractions(equation);
+
+        // 5. RESTORE STEP: Convert shielded exponent markers back into clean LaTeX fractions
+        equation = equation.replace(/(-?\d+)__EXP_SLASH__(\d+)/g, '\\frac{$1}{$2}');
+
+        // 6. PI EXTENSION
+        equation = equation.replace(/\bpi\b/g, '\\pi ');
+        equation = equation.replace(/([0-9])pi([a-zA-Z0-9]*)/g, '$1\\pi $2');
+
+        // 7. STANDARD TRIG FUNCTIONS
+        equation = equation.replace(/(^|[^a-zA-Z])(sqrt|cdot|arcsin|arccos|arctan|sin|cos|tan|csc|sec|cot|ln|log|int)(?![a-zA-Z])/g, '$1\\$2');
+
+        return equation;
+    }
+
     function autoFormatFractions(str) {
         function stripOuterParens(s) {
             s = s.trim();
@@ -249,15 +285,40 @@
             return s;
         }
 
-        let i = str.indexOf('/');
         let safetyCounter = 0;
         
-        while (i !== -1 && safetyCounter < 50) {
+        while (safetyCounter < 50) {
             safetyCounter++;
+            let targetIdx = -1;
+            
+            // Scan right-to-left for division slashes
+            for (let k = str.length - 1; k >= 0; k--) {
+                if (str[k] === '/') {
+                    let insideCompiledFrac = false;
+                    let openBraces = 0;
+                    for (let m = k; m >= 0; m--) {
+                        if (str[m] === '}') openBraces++;
+                        if (str[m] === '{') openBraces--;
+                        if (str.substring(m, m+5) === '\\frac' && openBraces < 0) {
+                            insideCompiledFrac = true;
+                            break;
+                        }
+                    }
+                    if (!insideCompiledFrac) {
+                        targetIdx = k;
+                        break;
+                    }
+                }
+            }
+
+            if (targetIdx === -1) break;
+            let i = targetIdx;
+
+            // Numerator extraction bounds
             let start = i - 1;
             while (start >= 0 && str[start] === ' ') start--; 
-
             let numStart = start;
+            
             if (str[start] === ')') {
                 let parens = 0;
                 while (numStart >= 0) {
@@ -266,20 +327,26 @@
                     if (parens === 0) break;
                     numStart--;
                 }
-                while (numStart - 1 >= 0 && /[a-zA-Z0-9\\\_]/.test(str[numStart - 1])) {
+                while (numStart - 1 >= 0 && /[a-zA-Z0-9\\\_]/.test(str[numStart - 1])) numStart--;
+            } else if (str[start] === '}') {
+                let braces = 0;
+                while (numStart >= 0) {
+                    if (str[numStart] === '}') braces++;
+                    if (str[numStart] === '{') braces--;
+                    if (braces === 0) break;
                     numStart--;
                 }
+                while (numStart - 1 >= 0 && /[a-zA-Z0-9\\\_]/.test(str[numStart - 1])) numStart--;
             } else {
-                while (numStart >= 0 && /[a-zA-Z0-9\.\^\_\\\{\}]/.test(str[numStart])) {
-                    numStart--;
-                }
+                while (numStart >= 0 && /[a-zA-Z0-9\.\^\_\\\{\}\(\)\*]/.test(str[numStart])) numStart--;
                 numStart++; 
             }
 
+            // Denominator extraction bounds
             let end = i + 1;
             while (end < str.length && str[end] === ' ') end++; 
-
             let denEnd = end;
+            
             if (str[end] === '(') {
                 let parens = 0;
                 while (denEnd < str.length) {
@@ -289,7 +356,15 @@
                     denEnd++;
                 }
             } else {
-                while (denEnd < str.length && /[a-zA-Z0-9\.\^\_\\\{\}]/.test(str[denEnd])) {
+                while (denEnd < str.length && /[a-zA-Z0-9\.\^\_\\\{\}\(\)\*]/.test(str[denEnd])) {
+                    if (str[denEnd] === '{') {
+                        let braceCount = 1;
+                        while (denEnd < str.length && braceCount > 0) {
+                            denEnd++;
+                            if (str[denEnd] === '{') braceCount++;
+                            if (str[denEnd] === '}') braceCount--;
+                        }
+                    }
                     denEnd++;
                 }
                 denEnd--; 
@@ -298,14 +373,12 @@
             if (numStart >= 0 && denEnd < str.length && numStart <= start && denEnd >= end) {
                 let numerator = stripOuterParens(str.substring(numStart, i));
                 let denominator = stripOuterParens(str.substring(i + 1, denEnd + 1));
-
+                
                 numerator = numerator.replace(/\+/g, '\\ +\\ ').replace(/\-/g, '\\ -\\ ');
                 denominator = denominator.replace(/\+/g, '\\ +\\ ').replace(/\-/g, '\\ -\\ ');
                 
                 let frac = `\\frac{${numerator}}{${denominator}}`;
                 str = str.substring(0, numStart) + frac + str.substring(denEnd + 1);
-                
-                i = str.indexOf('/', numStart + frac.length);
             } else {
                 break; 
             }
@@ -313,12 +386,42 @@
         return str;
     }
 
+    // --- MAIN GENERATOR INTERFACE LOGIC ---
     document.getElementById('convertBtn').addEventListener('click', function() {
-        const rawInput = document.getElementById('cb-input').value;
+        let rawInput = document.getElementById('cb-input').value;
         if (!rawInput.trim()) {
             alert('Please enter some equations first!');
             return;
         }
+
+        let longdivBlocks = [];
+        let blockRegex = /longdiv\(([^)]+)\)\[([\s\S]*?)\]/g;
+        
+        rawInput = rawInput.replace(blockRegex, function(match, divisor, gridContent) {
+            let cleanGrid = gridContent.replace(/[\r\n]+/g, ' ').trim();
+            let rows = cleanGrid.split(';');
+            
+            let formattedRows = rows.map((row, idx) => {
+                let trimmedRow = row.trim();
+                if (!trimmedRow) return '';
+                if (trimmedRow === 'hline') return '\\hline';
+                
+                trimmedRow = trimmedRow.replace(/\bdown\b/g, '\\downarrow');
+                trimmedRow = parseCustomShorthandMacros(trimmedRow);
+                
+                let cols = trimmedRow.split('&&').map(c => c.trim());
+                let mappedRow = cols.join(' & ');
+                
+                if (idx === 1) {
+                    return divisor + ' & \\enclose{longdiv}{' + mappedRow + '}';
+                }
+                return ' & ' + mappedRow;
+            }).filter(r => r !== '');
+            
+            let arrayLaTeX = '\\begin{array}{rccccccccc} ' + formattedRows.join(' \\\\ ') + ' \\end{array}';
+            longdivBlocks.push(arrayLaTeX);
+            return `__LONGDIV_PLACEHOLDER_${longdivBlocks.length - 1}__`;
+        });
 
         const lines = rawInput.split('\n');
         let processedLines = [];
@@ -332,18 +435,9 @@
             let textPart = "";
 
             if (trimmed.includes('|')) {
-                let matrixEndIdx = trimmed.lastIndexOf(']]');
-                let splitIdx = trimmed.indexOf('|', matrixEndIdx !== -1 ? matrixEndIdx : 0);
-                
-                if (splitIdx !== -1) {
-                    equation = trimmed.substring(0, splitIdx).trim();
-                    textPart = trimmed.substring(splitIdx + 1).trim();
-                } else if (!trimmed.includes('[[')) {
-                    // Fallback for standard lines without matrices
-                    let parts = trimmed.split('|');
-                    equation = parts[0].trim();
-                    textPart = parts.slice(1).join('|').trim();
-                }
+                let parts = trimmed.split('|');
+                equation = parts[0].trim();
+                textPart = parts.slice(1).join('|').trim();
             } else {
                 let textMatch = trimmed.match(/(.*?)\s{2,}([A-Za-z].*)$/);
                 if (textMatch) {
@@ -354,72 +448,29 @@
 
             if (textPart) hasTextColumn = true;
 
-            // STEP 1: PARSE MATRICES & AUGMENTED MATRICES VIA REGEX
-            equation = equation.replace(/\[\[([^\]]+)\]\]/g, function(match, innerContent) {
-                let rows = innerContent.split(';');
-                let firstRow = rows[0] || "";
-                let isAugmented = firstRow.includes('||');
-                
-                let formattedRows = rows.map(row => {
-                    if (isAugmented) {
-                        let parts = row.split('||');
-                        let leftCols = parts[0] ? parts[0].split(',').map(c => c.trim()) : [];
-                        let rightCols = parts[1] ? parts[1].split(',').map(c => c.trim()) : [];
-                        return leftCols.join(' & ') + ' & ' + rightCols.join(' & ');
-                    } else {
-                        let cols = row.split(',').map(c => c.trim());
-                        return cols.join(' & ');
+            let isPlaceholder = equation.includes('__LONGDIV_PLACEHOLDER_');
+
+            if (!isPlaceholder) {
+                equation = parseCustomShorthandMacros(equation);
+
+                if (equation.includes(',') && !equation.includes('array') && !equation.includes('matrix')) {
+                    let eqParts = equation.split(',');
+                    let mainEq = eqParts[0].trim();
+                    let constraint = eqParts.slice(1).join(',').trim();
+                    if (/[a-zA-Z]{2,}/.test(constraint)) {
+                        constraint = `\\text{${constraint}}`;
                     }
-                });
-
-                if (isAugmented) {
-                    let sampleParts = firstRow.split('||');
-                    let leftCount = sampleParts[0] ? sampleParts[0].split(',').length : 1;
-                    let rightCount = sampleParts[1] ? sampleParts[1].split(',').length : 1;
-                    let colSpec = 'c'.repeat(leftCount) + '|' + 'c'.repeat(rightCount);
-                    return '\\left[\\begin{array}{' + colSpec + '} ' + formattedRows.join(' \\\\ ') + ' \\end{array}\\right]';
-                } else {
-                    return '\\begin{bmatrix} ' + formattedRows.join(' \\\\ ') + ' \\end{bmatrix}';
+                    equation = `${mainEq}, ${constraint}`;
                 }
-            });
 
-            // STEP 2: FORMAT FRACTIONS
-            equation = autoFormatFractions(equation);
-
-            // STEP 3: PARSE SQUARE ROOTS WITH REGEX
-            equation = equation.replace(/sqrt\(([^)]+)\)/g, function(match, inside) {
-                return '\\sqrt{' + inside.replace(/\+/g, '\\ +\\ ').replace(/\-/g, '\\ -\\ ') + '}';
-            });
-            equation = equation.replace(/sqrt([a-zA-Z0-9\.]+)/g, function(match, inside) {
-                return '\\sqrt{' + inside.replace(/\+/g, '\\ +\\ ').replace(/\-/g, '\\ -\\ ') + '}';
-            });
-
-            // STEP 4: RUN PI PARSER
-            equation = equation.replace(/\bpi\b/g, '\\pi ');
-            equation = equation.replace(/([0-9])pi([a-zA-Z0-9]*)/g, '$1\\pi $2');
-
-            // STEP 5: RUN DOMAIN / CONSTRAINT PARSER (Shielded from processing internal array environments)
-            if (equation.includes(',') && !equation.includes('array') && !equation.includes('matrix')) {
-                let eqParts = equation.split(',');
-                let mainEq = eqParts[0].trim();
-                let constraint = eqParts.slice(1).join(',').trim();
-                
-                if (/[a-zA-Z]{2,}/.test(constraint)) {
-                    constraint = `\\text{${constraint}}`;
+                if (!equation.includes('array') && !equation.includes('matrix')) {
+                    if (equation.includes('=') && !equation.includes('&=')) {
+                        equation = equation.replace('=', '&=');
+                    } else if (!equation.includes('=')) {
+                        equation = '&' + equation;
+                    }
                 }
-                equation = `${mainEq}, ${constraint}`;
             }
-            
-
-            // STEP 6: GRID ALIGNMENT SETUP
-            if (equation.includes('=') && !equation.includes('&=')) {
-                equation = equation.replace('=', '&=');
-            } else if (!equation.includes('=')) {
-                equation = '&' + equation;
-            }
-
-            // STEP 7: TRANSLATE OTHER MATH FUNCTIONS
-            equation = equation.replace(/(^|[^a-zA-Z])(arcsin|arccos|arctan|sin|cos|tan|csc|sec|cot|ln|log|int)(?![a-zA-Z])/g, '$1\\$2');
 
             return { equation, textPart };
         }).filter(line => line !== null);
@@ -427,6 +478,12 @@
         for (let i = 0; i < parsedLines.length; i++) {
             let lineItem = parsedLines[i];
             let currentLineString = lineItem.equation;
+
+            if (currentLineString.includes('__LONGDIV_PLACEHOLDER_')) {
+                currentLineString = currentLineString.replace(/__LONGDIV_PLACEHOLDER_(\d+)__/g, function(match, index) {
+                    return longdivBlocks[parseInt(index)];
+                });
+            }
 
             if (hasTextColumn) {
                 if (lineItem.textPart) {
@@ -436,14 +493,18 @@
                 }
             }
 
-            if (i < parsedLines.length - 1) {
+            if (i < parsedLines.length - 1 && !currentLineString.includes('\\begin{array}')) {
                 currentLineString += ` \\\\[10pt]`;
             }
-
             processedLines.push(currentLineString);
         }
 
-        const finalMathJax = `\\( \\begin{aligned} ${processedLines.join(' ')} \\end{aligned} \\)`.replace('\\( \\begin{aligned}  ', '\\( \\begin{aligned} ').replace(' \\ )', ' \\)');
+        let finalMathJax = "";
+        if (parsedLines.length === 1 && processedLines[0].includes('\\begin{array}')) {
+            finalMathJax = `\\( ${processedLines.join(' ')} \\)`;
+        } else {
+            finalMathJax = `\\( \\begin{aligned} ${processedLines.join(' ')} \\end{aligned} \\)`.replace('\\( \\begin{aligned}  ', '\\( \\begin{aligned} ').replace(' \\ )', ' \\)');
+        }
         
         const targetOutputBox = document.getElementById('cb-mathjax-output');
         targetOutputBox.textContent = finalMathJax;
@@ -456,19 +517,15 @@
     document.getElementById('cbCopyBtn').addEventListener('click', function() {
         const textToCopy = document.getElementById('cb-mathjax-output').textContent;
         if (textToCopy === 'Generated code will appear here...') return;
-
         navigator.clipboard.writeText(textToCopy).then(() => {
             const copyBtn = document.getElementById('cbCopyBtn');
             copyBtn.textContent = 'Copied!';
             copyBtn.style.background = '#4CAF50';
             copyBtn.style.color = 'white';
-            
             setTimeout(() => {
                 copyBtn.textContent = 'Copy CB Code';
                 copyBtn.style.background = 'black';
             }, 2000);
-        }).catch(err => {
-            console.error('Failed to copy text: ', err);
         });
     });
 

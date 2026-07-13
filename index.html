@@ -492,9 +492,30 @@
         equation = equation.replace(/([0-9])pi([a-zA-Z0-9]*)/g, '$1\\pi $2');
 
         // 5. STANDARD TRIG FUNCTIONS
-        equation = equation.replace(/(^|[^a-zA-Z\\])(arcsin|arccos|arctan|sin|cos|tan|csc|sec|cot|ln|log|int|cdot)(?![a-zA-Z])/g, '$1\\$2');
+        equation = equation.replace(/(^|[^a-zA-Z\\])(sim|therefore|parallel|perp|angle|triangle|cong|arcsin|arccos|arctan|sin|cos|tan|csc|sec|cot|ln|log|int|cdot)(?![a-zA-Z])/g, '$1\\$2');
 
-        // 6. AUTO-SCALE DELIMITERS (Will skip pre-compiled matrix arrays perfectly)
+        // 6. GEOMETRIC OVERLINE SEGMENTS PARSER
+        equation = equation.replace(/overline\(([^)]+)\)/g, '\\overline{$1}');
+
+        // 7. GEOMETRIC OVERLINE SEGMENTS PARSER
+        equation = equation.replace(/overline\(([^)]+)\)/g, '\\overline{$1}');
+
+        // 8. GEOMETRIC LINE & RAY PARSERS
+        equation = equation.replace(/line\(([^)]+)\)/g, '\\overleftrightarrow{$1}');
+        equation = equation.replace(/ray\(([^)]+)\)/g, '\\overrightarrow{$1}');
+
+       // 9. GEOMETRIC DEGREE SIGN PARSER
+        equation = equation.replace(/(\d+|\))\s*(deg|°)/g, '$1^{\\circ}');
+
+        // 10. INEQUALITY NOTATION
+        equation = equation.replace(/!=/g, '\\neq');
+
+        // 11. INEQUALITY NOTATION
+        equation = equation.replace(/!=/g, '\\neq');
+        equation = equation.replace(/<=/g, '\\leq');
+        equation = equation.replace(/>=/g, '\\geq');
+
+        // 12. AUTO-SCALE DELIMITERS (Will skip pre-compiled matrix arrays perfectly)
         equation = autoScaleDelimiters(equation);
 
         return equation;
@@ -583,9 +604,28 @@
 
                 // SECURITY CHECK: Apply alignment logic to non-matrix statements only
                 if (!equation.includes('array') && !equation.includes('matrix') && !equation.includes('bmatrix')) {
+                    // Comprehensive relational check for alignment stacking
                     if (equation.includes('=') && !equation.includes('&=')) {
                         equation = equation.replace('=', '&=');
-                    } else if (!equation.includes('=')) {
+                    } else if (equation.includes('\\cong') && !equation.includes('&\\cong')) {
+                        equation = equation.replace('\\cong', '&\\cong');
+                    } else if (equation.includes('\\sim') && !equation.includes('&\\sim')) {
+                        equation = equation.replace('\\sim', '&\\sim');
+                    } else if (equation.includes('\\neq') && !equation.includes('&\\neq')) {
+                        equation = equation.replace('\\neq', '&\\neq');
+                    } else if (equation.includes('\\parallel') && !equation.includes('&\\parallel')) {
+                        equation = equation.replace('\\parallel', '&\\parallel');
+                    } else if (equation.includes('\\perp') && !equation.includes('&\\perp')) {
+                        equation = equation.replace('\\perp', '&\\perp');
+                    } else if (equation.includes('<') && !equation.includes('&<')) {
+                        equation = equation.replace('<', '&<');
+                    } else if (equation.includes('>') && !equation.includes('&>')) {
+                        equation = equation.replace('>', '&>');
+                    } else if (equation.includes('\\leq') && !equation.includes('&\\leq')) {
+                        equation = equation.replace('\\leq', '&\\leq');
+                    } else if (equation.includes('\\geq') && !equation.includes('&\\geq')) {
+                        equation = equation.replace('\\geq', '&\\geq');
+                    } else if (!equation.includes('=') && !equation.includes('\\cong') && !equation.includes('\\sim') && !equation.includes('\\neq') && !equation.includes('\\parallel') && !equation.includes('\\perp') && !equation.includes('<') && !equation.includes('>') && !equation.includes('\\leq') && !equation.includes('\\geq')) {
                         equation = '&' + equation;
                     }
                 } else {
@@ -643,10 +683,23 @@
             liveRenderHTML = finalMathJax;
         } 
         else if (originalLineCount === 1 && !hasTextColumn) {
-            let cleanStandalone = processedLines.join(' ').replace(/^&/, '');
+            // Strips out any alignment tabs for standalone lines
+            let cleanStandalone = processedLines.join(' ')
+                .replace(/^&/, '')
+                .replace(/&=/g, '=')
+                .replace(/&\\cong/g, '\\cong')
+                .replace(/&\\sim/g, '\\sim')
+                .replace(/&\\neq/g, '\\neq')
+                .replace(/&\\parallel/g, '\\parallel')
+                .replace(/&\\perp/g, '\\perp')
+                .replace(/&</g, '<')
+                .replace(/&>/g, '>')
+                .replace(/&\\leq/g, '\\leq')
+                .replace(/&\\geq/g, '\\geq');
+                
             finalMathJax = `\\( ${cleanStandalone} \\)`;
             liveRenderHTML = finalMathJax;
-        } 
+        }
         else {
             finalMathJax = `\\( \\begin{aligned} ${processedLines.join(' ')} \\end{aligned} \\)`.replace('\\( \\begin{aligned}  ', '\\( \\begin{aligned} ').replace(' \\ )', ' \\)');
             liveRenderHTML = finalMathJax;

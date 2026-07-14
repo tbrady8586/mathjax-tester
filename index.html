@@ -16,27 +16,27 @@
     <style>
         body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f0f2f5; color: #333; }
         .master-nav { 
-    text-align: center; 
-    margin-bottom: 30px; 
-    padding: 15px; 
-    background: white; 
-    border-radius: 8px; 
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 15px;
-    flex-wrap: wrap; /* Ensures responsiveness if the window shrinks */
-}
-       .nav-btn { 
-    padding: 8px 16px; 
-    cursor: pointer; 
-    border: 2px solid gray; 
-    background: white; 
-    color: black; 
-    border-radius: 20px; 
-    font-weight: bold; 
-}
+            text-align: center; 
+            margin-bottom: 30px; 
+            padding: 15px; 
+            background: white; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap; 
+        }
+        .nav-btn { 
+            padding: 8px 16px; 
+            cursor: pointer; 
+            border: 2px solid gray; 
+            background: white; 
+            color: black; 
+            border-radius: 20px; 
+            font-weight: bold; 
+        }
         .nav-btn.active { background: black; color: white; }
         
         .wrapper { max-width: 1200px; margin: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
@@ -78,10 +78,10 @@
         .hidden { display: none !important; }
 
         #output-proof-controls, #output-cb-controls {
-    margin-bottom: 20px;
-    display: flex;
-    gap: 10px;
-}
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
     </style>
 </head>
 <body>
@@ -507,16 +507,14 @@
        // 9. GEOMETRIC DEGREE SIGN PARSER
         equation = equation.replace(/(\d+|\))\s*(deg|°)/g, '$1^{\\circ}');
 
-        // 10. INEQUALITY NOTATION
-        equation = equation.replace(/!=/g, '\\neq');
+        // 10. PLAIN TEXT MACRO PARSER
+        equation = equation.replace(/text\(([^)]+)\)/g, '\\text{$1}');
+
 
         // 11. INEQUALITY NOTATION
         equation = equation.replace(/!=/g, '\\neq');
         equation = equation.replace(/<=/g, '\\leq');
         equation = equation.replace(/>=/g, '\\geq');
-
-        // 12. PLAIN TEXT MACRO PARSER
-        equation = equation.replace(/text\(([^)]+)\)/g, '\\text{$1}');
 
         // 13. GREEK LETTERS (Auto-prefixes with backslash)
         equation = equation.replace(/(^|[^a-zA-Z\\])(alpha|beta|gamma|delta|theta|pi|mu|sigma|tau|phi|omega|Sigma|Delta|Omega)(?![a-zA-Z])/g, '$1\\$2');
@@ -614,6 +612,11 @@
 
             if (!isPlaceholder) {
                 equation = parseCustomShorthandMacros(equation);
+                
+                // NEW FIX: Pass the right side through the macro engine too!
+                if (textPart) {
+                    textPart = parseCustomShorthandMacros(textPart);
+                }
 
                 if (equation.includes(',') && !equation.includes('array') && !equation.includes('matrix') && !equation.includes('bmatrix')) {
                     let eqParts = equation.split(',');
@@ -677,7 +680,8 @@
 
             if (hasTextColumn) {
                 if (lineItem.textPart) {
-                    currentLineString += ` &&\\text{${lineItem.textPart}}`;
+                    // NEW FIX: Removed the automatic \text{} wrapper so it respects the Gem's formatting
+                    currentLineString += ` && ${lineItem.textPart}`;
                 } else {
                     currentLineString += ` &&`; 
                 }
@@ -702,7 +706,7 @@
                 if (trimmedLine.includes('\\left[') || trimmedLine.includes('[[') || trimmedLine.includes('\\begin{array}')) {
                     return `\\( ${trimmedLine} \\)`;
                 } else {
-                    let cleanText = trimmedLine.replace(/&&\\text\{.*?\}/g, '').replace(/&&$/, '').trim();
+                    let cleanText = trimmedLine.split('&&')[0].trim();
                     return `<div>${cleanText}</div>`;
                 }
             });
@@ -732,10 +736,16 @@
             liveRenderHTML = finalMathJax;
         }
         
-        // 17. FINAL SAFEHAVEN CONVERSION FOR LARGE NUMBERS
-        // The \s* will catch the commas whether they are touching (,,) or have a space in between (, ,)
-        finalMathJax = finalMathJax.replace(/,\s*,/g, '{,}');
-        liveRenderHTML = liveRenderHTML.replace(/,\s*,/g, '{,}');
+        // 17. FINAL SAFEHAVEN CONVERSION FOR LARGE NUMBERS & SPACING
+        if (finalMathJax) {
+            finalMathJax = finalMathJax.split('#').join('{,}');
+            finalMathJax = finalMathJax.replace(/\}\s+(\d)/g, '}\\ $1').replace(/(\d)\s+\\text\{/g, '$1\\ \\text{');
+        }
+        
+        if (liveRenderHTML) {
+            liveRenderHTML = liveRenderHTML.split('#').join('{,}');
+            liveRenderHTML = liveRenderHTML.replace(/\}\s+(\d)/g, '}\\ $1').replace(/(\d)\s+\\text\{/g, '$1\\ \\text{');
+        }
 
         // Output code to standard code viewport
         const targetOutputBox = document.getElementById('cb-mathjax-output');

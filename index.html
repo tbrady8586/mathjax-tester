@@ -492,7 +492,7 @@
         equation = equation.replace(/([0-9])pi([a-zA-Z0-9]*)/g, '$1\\pi $2');
 
         // 5. STANDARD TRIG FUNCTIONS
-        equation = equation.replace(/(^|[^a-zA-Z\\])(sim|therefore|parallel|perp|angle|triangle|cong|arcsin|arccos|arctan|sin|cos|tan|csc|sec|cot|ln|log|int|cdot)(?![a-zA-Z])/g, '$1\\$2');
+        equation = equation.replace(/(^|[^a-zA-Z\\])(approx|vert|sim|therefore|parallel|perp|angle|triangle|cong|arcsin|arccos|arctan|sin|cos|tan|csc|sec|cot|ln|log|int|cdot)(?![a-zA-Z])/g, '$1\\$2');
 
         // 6. GEOMETRIC OVERLINE SEGMENTS PARSER
         equation = equation.replace(/overline\(([^)]+)\)/g, '\\overline{$1}');
@@ -515,7 +515,32 @@
         equation = equation.replace(/<=/g, '\\leq');
         equation = equation.replace(/>=/g, '\\geq');
 
-        // 12. AUTO-SCALE DELIMITERS (Will skip pre-compiled matrix arrays perfectly)
+        // 12. PLAIN TEXT MACRO PARSER
+        equation = equation.replace(/text\(([^)]+)\)/g, '\\text{$1}');
+
+        // 13. GREEK LETTERS (Auto-prefixes with backslash)
+        equation = equation.replace(/(^|[^a-zA-Z\\])(alpha|beta|gamma|delta|theta|pi|mu|sigma|tau|phi|omega|Sigma|Delta|Omega)(?![a-zA-Z])/g, '$1\\$2');
+
+        // 14. SET THEORY (Union and Intersection)
+        equation = equation.replace(/(^|[^a-zA-Z\\])(union)(?![a-zA-Z])/g, '$1\\cup');
+        equation = equation.replace(/(^|[^a-zA-Z\\])(intersect)(?![a-zA-Z])/g, '$1\\cap');
+
+        // 15. STATISTIC MODIFIERS (x-bar, p-hat, y-hat)
+        equation = equation.replace(/xbar/g, '\\bar{x}');
+        equation = equation.replace(/phat/g, '\\hat{p}');
+        equation = equation.replace(/yhat/g, '\\hat{y}');
+
+        // 16. COMBINATORICS (Binomials, nCr, nPr)
+        equation = equation.replace(/binom\(([^,]+),\s*([^)]+)\)/g, '\\binom{$1}{$2}');
+        equation = equation.replace(/nCr\(([^,]+),\s*([^)]+)\)/g, '{}_{$1}C_{$2}');
+        equation = equation.replace(/nPr\(([^,]+),\s*([^)]+)\)/g, '{}_{$1}P_{$2}');
+
+
+        // 17. PERCENTAGE FIX
+        // Escapes the percent sign so MathJax doesn't comment out the rest of your line
+        equation = equation.replace(/%/g, '\\%');
+
+        // 18. AUTO-SCALE DELIMITERS (Will skip pre-compiled matrix arrays perfectly)
         equation = autoScaleDelimiters(equation);
 
         return equation;
@@ -607,6 +632,8 @@
                     // Comprehensive relational check for alignment stacking
                     if (equation.includes('=') && !equation.includes('&=')) {
                         equation = equation.replace('=', '&=');
+                    } else if (equation.includes('\\approx') && !equation.includes('&\\approx')) {
+                        equation = equation.replace('\\approx', '&\\approx');
                     } else if (equation.includes('\\cong') && !equation.includes('&\\cong')) {
                         equation = equation.replace('\\cong', '&\\cong');
                     } else if (equation.includes('\\sim') && !equation.includes('&\\sim')) {
@@ -705,6 +732,11 @@
             liveRenderHTML = finalMathJax;
         }
         
+        // 17. FINAL SAFEHAVEN CONVERSION FOR LARGE NUMBERS
+        // The \s* will catch the commas whether they are touching (,,) or have a space in between (, ,)
+        finalMathJax = finalMathJax.replace(/,\s*,/g, '{,}');
+        liveRenderHTML = liveRenderHTML.replace(/,\s*,/g, '{,}');
+
         // Output code to standard code viewport
         const targetOutputBox = document.getElementById('cb-mathjax-output');
         targetOutputBox.textContent = finalMathJax;
